@@ -12,10 +12,11 @@ const corsOptions = {
     // Allow non-browser requests like curl/postman (no origin)
     if (!origin) return callback(null, true);
     if (allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
+      return callback(null, true);
     }
+    // Don't throw an error here — return false so cors middleware handles it cleanly.
+    console.warn(`CORS: blocked origin ${origin}`);
+    return callback(null, false);
   },
   credentials: true, // Allow httpOnly cookies to be sent
 };
