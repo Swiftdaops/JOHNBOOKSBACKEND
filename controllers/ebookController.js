@@ -177,4 +177,24 @@ const deleteEbook = asyncHandler(async (req, res) => {
   res.json({ message: 'Ebook deleted' });
 });
 
-module.exports = { createEbook, getEbooks, updateEbook, deleteEbook };
+const likeEbook = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const ebook = await Ebook.findByIdAndUpdate(
+    id,
+    { $inc: { likes: 1 } },
+    { new: true }
+  );
+  if (!ebook) {
+    res.status(404);
+    throw new Error('Ebook not found');
+  }
+  res.json({ message: 'Liked', likes: ebook.likes });
+});
+
+const getTopEbooks = asyncHandler(async (req, res) => {
+  const limit = Number(req.query.limit) || 5;
+  const ebooks = await Ebook.find({}).select('-__v').sort({ likes: -1, createdAt: -1 }).limit(limit);
+  res.json(ebooks);
+});
+
+module.exports = { createEbook, getEbooks, updateEbook, deleteEbook, likeEbook, getTopEbooks };
