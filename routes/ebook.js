@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createEbook, getEbooks, updateEbook, deleteEbook, likeEbook, getTopEbooks } = require('../controllers/ebookController');
+const { createEbook, getEbooks, updateEbook, deleteEbook, likeEbook, getTopEbooks, getEbookStats } = require('../controllers/ebookController');
 const { protect, admin } = require('../middleware/auth');
 const { uploadCoverImage } = require('../middleware/upload');
 
