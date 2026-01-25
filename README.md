@@ -10,6 +10,17 @@ Express + MongoDB backend with Cloudinary image uploads, JWT auth via httpOnly c
 
 ## Setup
 1. Copy `.env.example` to `.env` and fill values.
+## Environment Variables
+
+### CORS
+
+Set `CORS_ALLOWED_ORIGINS` (comma-separated) to the frontend domains that are allowed to call this API in production.
+
+Example:
+
+- `CORS_ALLOWED_ORIGINS=https://ebooks-sigma.vercel.app,http://localhost:5173`
+
+Note: updating `.env` only affects local runs. For production (Render/Railway/etc), set the same env var in your hosting provider.
 2. Install dependencies.
 
 ```bash
