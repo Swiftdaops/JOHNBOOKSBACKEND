@@ -32,8 +32,8 @@ const login = asyncHandler(async (req, res) => {
     res.status(401);
     throw new Error('Invalid credentials');
   }
-  generateToken(res, user._id.toString());
-  res.json({ message: 'Logged in' });
+  const token = generateToken(res, user._id.toString());
+  res.json({ message: 'Logged in', token });
 });
 
 const logout = asyncHandler(async (req, res) => {

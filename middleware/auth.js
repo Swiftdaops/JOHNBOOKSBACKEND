@@ -3,7 +3,12 @@ const asyncHandler = require('express-async-handler');
 const User = require('../models/User');
 
 const protect = asyncHandler(async (req, res, next) => {
-  let token = req.cookies && req.cookies.jwt;
+  // Prefer cookie-based token, fall back to Authorization header (Bearer) for clients
+  // that can't store third-party cookies (mobile browsers or strict privacy settings).
+  let token = (req.cookies && req.cookies.jwt) || null;
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  }
 
   if (!token) {
     res.status(401);
