@@ -179,16 +179,32 @@ const deleteEbook = asyncHandler(async (req, res) => {
 
 const likeEbook = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const ebook = await Ebook.findByIdAndUpdate(
-    id,
-    { $inc: { likes: 1 } },
+
+  // Accept cid from body, header, cookie or query
+  const cid = (req.body && req.body.cid) || req.headers['x-cid'] || (req.cookies && req.cookies.cid) || req.query.cid;
+  if (!cid) {
+    res.status(400);
+    throw new Error('Missing client id (cid). Include a client id in the request body, `x-cid` header or as a cookie.');
+  }
+
+  // Atomically add cid to likedBy only if not already present and increment likes
+  const updated = await Ebook.findOneAndUpdate(
+    { _id: id, likedBy: { $ne: cid } },
+    { $inc: { likes: 1 }, $push: { likedBy: cid } },
     { new: true }
   );
-  if (!ebook) {
-    res.status(404);
-    throw new Error('Ebook not found');
+
+  // If `updated` is null, either ebook not found or cid already exists
+  if (!updated) {
+    const ebook = await Ebook.findById(id);
+    if (!ebook) {
+      res.status(404);
+      throw new Error('Ebook not found');
+    }
+    return res.json({ message: 'Already liked', likes: ebook.likes });
   }
-  res.json({ message: 'Liked', likes: ebook.likes });
+
+  res.json({ message: 'Liked', likes: updated.likes });
 });
 
 const getTopEbooks = asyncHandler(async (req, res) => {

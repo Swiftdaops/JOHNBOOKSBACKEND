@@ -16,6 +16,8 @@ const ebookSchema = new mongoose.Schema(
       public_id: { type: String, required: true },
     },
     likes: { type: Number, default: 0 },
+    // store client identifiers (cid) of visitors who liked this ebook to prevent duplicate likes
+    likedBy: { type: [String], default: [] },
   },
   { timestamps: true }
 );
