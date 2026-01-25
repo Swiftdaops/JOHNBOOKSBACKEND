@@ -8,6 +8,8 @@ router.get('/', getEbooks);
 
 // Public endpoint to fetch top liked ebooks
 router.get('/top', getTopEbooks);
+// Public endpoint to fetch basic ebook stats (total count)
+router.get('/stats', getEbookStats);
 
 router.post('/', protect, admin, uploadCoverImage, createEbook);
 

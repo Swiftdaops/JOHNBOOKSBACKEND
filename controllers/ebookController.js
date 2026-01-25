@@ -213,4 +213,10 @@ const getTopEbooks = asyncHandler(async (req, res) => {
   res.json(ebooks);
 });
 
-module.exports = { createEbook, getEbooks, updateEbook, deleteEbook, likeEbook, getTopEbooks };
+const getEbookStats = asyncHandler(async (req, res) => {
+  const total = await Ebook.countDocuments();
+  // optionally, include other aggregates in future
+  res.json({ totalBooks: total });
+});
+
+module.exports = { createEbook, getEbooks, updateEbook, deleteEbook, likeEbook, getTopEbooks, getEbookStats };
