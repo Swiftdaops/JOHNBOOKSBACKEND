@@ -14,6 +14,15 @@ const os = require('os');
 const app = express();
 app.set('trust proxy', 1);
 
+// Global process-level handlers to ensure errors are logged
+process.on('unhandledRejection', (reason, p) => {
+	console.error('Unhandled Rejection at Promise', p, 'reason:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+	console.error('Uncaught Exception thrown:', err);
+});
+
 // Core middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
