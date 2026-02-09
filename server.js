@@ -38,6 +38,17 @@ const ebookRoutes = require('./routes/ebook');
 app.use('/api/admin', adminRoutes);
 app.use('/api/ebooks', ebookRoutes);
 
+// Root route: redirect to client or return minimal JSON to avoid 404 on '/'
+app.get('/', (req, res) => {
+	const client = process.env.CLIENT_ORIGIN || process.env.CLIENT_URL || 'https://ebooks-sigma.vercel.app';
+	console.log('Root hit, redirecting or responding with client=', client);
+	// If browser expects HTML, redirect to frontend
+	if (req.headers.accept && req.headers.accept.includes('text/html')) {
+		return res.redirect(client);
+	}
+	res.json({ status: 'ok', message: 'JohnBooks backend is running', client });
+});
+
 // Health check
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
