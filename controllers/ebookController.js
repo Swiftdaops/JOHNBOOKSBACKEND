@@ -213,10 +213,50 @@ const getTopEbooks = asyncHandler(async (req, res) => {
   res.json(ebooks);
 });
 
+const getEbookById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  console.log('getEbookById: incoming request', { url: req.originalUrl, id, type: typeof id });
+
+  // Try a normal findById first
+  let ebook = await Ebook.findById(id).select('-__v');
+
+  // If not found, try a few permissive fallbacks and log what we tried.
+  if (!ebook) {
+    console.warn('getEbookById: findById returned null, attempting fallbacks for id=', id);
+    try {
+      ebook = await Ebook.findOne({ _id: id }).select('-__v');
+      if (ebook) console.log('getEbookById: found via findOne({_id: id})');
+    } catch (e) {
+      console.warn('getEbookById: findOne({_id: id}) threw', e.message);
+    }
+  }
+
+  if (!ebook) {
+    try {
+      const mongoose = require('mongoose');
+      if (mongoose.isValidObjectId(id)) {
+        ebook = await Ebook.findById(mongoose.Types.ObjectId(id)).select('-__v');
+        if (ebook) console.log('getEbookById: found via ObjectId cast');
+      } else {
+        console.warn('getEbookById: id is not a valid ObjectId:', id);
+      }
+    } catch (e) {
+      console.warn('getEbookById: ObjectId fallback threw', e.message);
+    }
+  }
+
+  if (!ebook) {
+    res.status(404);
+    throw new Error('Ebook not found');
+  }
+
+  res.json(ebook);
+});
+
 const getEbookStats = asyncHandler(async (req, res) => {
   const total = await Ebook.countDocuments();
   // optionally, include other aggregates in future
   res.json({ totalBooks: total });
 });
 
-module.exports = { createEbook, getEbooks, updateEbook, deleteEbook, likeEbook, getTopEbooks, getEbookStats };
+module.exports = { createEbook, getEbooks, getEbookById, updateEbook, deleteEbook, likeEbook, getTopEbooks, getEbookStats };
