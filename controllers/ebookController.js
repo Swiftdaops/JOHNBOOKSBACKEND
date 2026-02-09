@@ -1,10 +1,12 @@
 const asyncHandler = require('express-async-handler');
+const mongoose = require('mongoose');
 const Joi = require('joi');
 const cloudinary = require('../config/cloudinary');
 const Ebook = require('../models/Ebook');
 
 const DEFAULT_CURRENCY = process.env.DEFAULT_CURRENCY || 'NGN';
 
+// --- Validation Schemas ---
 const priceObjectSchema = Joi.object({
   amount: Joi.number().min(0).required(),
   currency: Joi.string().min(1).optional(),
@@ -14,24 +16,43 @@ const baseSchema = {
   title: Joi.string().min(1).required(),
   author: Joi.string().min(1).required(),
   description: Joi.string().allow('').optional(),
-  // allow either a number (legacy) or an object { amount, currency }
   price: Joi.alternatives().try(Joi.number().min(0), priceObjectSchema).optional(),
   currency: Joi.string().min(1).optional(),
 };
 
 const createSchema = Joi.object(baseSchema);
-const updateSchema = Joi.object({
-  title: Joi.string().min(1),
-  author: Joi.string().min(1),
-  description: Joi.string().min(1),
-  price: Joi.alternatives().try(Joi.number().min(0), priceObjectSchema),
-  currency: Joi.string().min(1),
-}).min(1);
+const updateSchema = Joi.object(baseSchema).fork(Object.keys(baseSchema), (schema) => schema.optional()).min(1);
+
+// --- Controller Functions ---
 
 /**
- * Create a new ebook. Accepts a multer `req.file` (Cloudinary upload middleware).
- * If `req.file` is not present, will fall back to a provided coverImage in body
- * or to a static demo URL (useful for manual/testing flows).
+ * @desc    Fetch a single ebook by ID
+ * @route   GET /api/ebooks/:id
+ */
+const getEbookById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+
+  // 1. Validate ID format immediately
+  if (!mongoose.isValidObjectId(id)) {
+    res.status(400);
+    throw new Error('Invalid Ebook ID format');
+  }
+
+  // 2. Simple, direct query
+  const ebook = await Ebook.findById(id).select('-__v');
+
+  // 3. If not found, return 404
+  if (!ebook) {
+    res.status(404);
+    throw new Error('Ebook not found');
+  }
+
+  res.json(ebook);
+});
+
+/**
+ * @desc    Create new ebook
+ * @route   POST /api/ebooks
  */
 const createEbook = asyncHandler(async (req, res) => {
   const { error, value } = createSchema.validate(req.body);
@@ -40,72 +61,36 @@ const createEbook = asyncHandler(async (req, res) => {
     throw new Error(error.details[0].message);
   }
 
-  // Determine cover image: prefer uploaded file, then body.coverImageUrl, then demo static
-  let coverImage;
-  if (req.file) {
-    coverImage = { url: req.file.path, public_id: req.file.filename };
-  } else if (req.body && req.body.coverImageUrl) {
-    coverImage = { url: req.body.coverImageUrl, public_id: req.body.coverImagePublicId || '' };
-  } else {
-    // Demo fallback (from user's provided sample)
-    coverImage = {
-      url: 'https://res.cloudinary.com/dzijdorge/image/upload/v1763476497/hunam_comp_x3mwck.jpg',
-      public_id: 'hunam_comp_x3mwck',
-    };
-    console.log('No file detected in request, using demo static cover image.');
+  // Cover Image Logic
+  let coverImage = {
+    url: req.file?.path || req.body.coverImageUrl || 'https://res.cloudinary.com/dzijdorge/image/upload/v1763476497/hunam_comp_x3mwck.jpg',
+    public_id: req.file?.filename || req.body.coverImagePublicId || 'hunam_comp_x3mwck'
+  };
+
+  // Standardize Price Structure
+  let priceObj = { amount: 0, currency: value.currency || DEFAULT_CURRENCY };
+  if (typeof value.price === 'number') {
+    priceObj.amount = value.price;
+  } else if (value.price && typeof value.price === 'object') {
+    priceObj.amount = value.price.amount || 0;
+    priceObj.currency = value.price.currency || priceObj.currency;
   }
 
-  // Convert price input to the new { amount, currency } shape
-  let priceObj = { amount: 0, currency: DEFAULT_CURRENCY };
-  if (value.price !== undefined) {
-    if (typeof value.price === 'number') {
-      priceObj.amount = value.price;
-      priceObj.currency = value.currency || DEFAULT_CURRENCY;
-    } else if (typeof value.price === 'object' && value.price !== null) {
-      priceObj.amount = Number(value.price.amount) || 0;
-      priceObj.currency = value.price.currency || value.currency || DEFAULT_CURRENCY;
-    }
-  } else if (req.body && req.body.price !== undefined) {
-    // fallback parsing from raw body (strings)
-    const parsed = Number(req.body.price);
-    if (!Number.isNaN(parsed)) {
-      priceObj.amount = parsed;
-      priceObj.currency = req.body.currency || DEFAULT_CURRENCY;
-    }
-  }
-
-  const ebookData = {
+  const ebook = await Ebook.create({
     title: value.title,
     author: value.author,
     description: value.description || '',
     price: priceObj,
     coverImage,
-  };
-
-  if (!ebookData.title || !ebookData.author || !ebookData.coverImage || !ebookData.coverImage.url) {
-    res.status(400);
-    throw new Error('Please provide a title, author, and cover image.');
-  }
-
-  const ebook = await Ebook.create(ebookData);
-
-  res.status(201).json({
-    message: 'Ebook created successfully!',
-    data: {
-      _id: ebook._id,
-      title: ebook.title,
-      author: ebook.author,
-      coverImageUrl: ebook.coverImage.url,
-      createdAt: ebook.createdAt,
-    },
   });
+
+  res.status(201).json({ message: 'Ebook created successfully!', data: ebook });
 });
 
-const getEbooks = asyncHandler(async (req, res) => {
-  const ebooks = await Ebook.find({}).select('-__v').sort({ createdAt: -1 });
-  res.json(ebooks);
-});
-
+/**
+ * @desc    Update ebook
+ * @route   PUT /api/ebooks/:id
+ */
 const updateEbook = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { error, value } = updateSchema.validate(req.body);
@@ -120,45 +105,51 @@ const updateEbook = asyncHandler(async (req, res) => {
     throw new Error('Ebook not found');
   }
 
-  // If new cover uploaded, replace in Cloudinary
+  // Handle Image Update
   if (req.file) {
     try {
-      await cloudinary.uploader.destroy(ebook.coverImage.public_id);
-    } catch (e) {
-      // non-blocking; log and continue
-      console.warn('Cloudinary destroy failed:', e.message);
-    }
-    value.coverImage = { url: req.file.path, public_id: req.file.filename };
-  }
-
-  // Handle price updates explicitly so we maintain the object shape
-  if (value.price !== undefined || req.body.price !== undefined || value.currency) {
-    let priceObj = ebook.price || { amount: 0, currency: DEFAULT_CURRENCY };
-    if (value.price !== undefined) {
-      if (typeof value.price === 'number') {
-        priceObj.amount = value.price;
-        priceObj.currency = value.currency || priceObj.currency || DEFAULT_CURRENCY;
-      } else if (typeof value.price === 'object' && value.price !== null) {
-        priceObj.amount = Number(value.price.amount) || priceObj.amount || 0;
-        priceObj.currency = value.price.currency || value.currency || priceObj.currency || DEFAULT_CURRENCY;
+      if (ebook.coverImage?.public_id) {
+        await cloudinary.uploader.destroy(ebook.coverImage.public_id);
       }
-    } else if (req.body.price !== undefined) {
-      const parsed = Number(req.body.price);
-      if (!Number.isNaN(parsed)) priceObj.amount = parsed;
-      priceObj.currency = req.body.currency || value.currency || priceObj.currency || DEFAULT_CURRENCY;
-    } else if (value.currency) {
-      priceObj.currency = value.currency;
+    } catch (e) {
+      console.warn('Cloudinary cleanup failed:', e.message);
     }
-    ebook.price = priceObj;
+    ebook.coverImage = { url: req.file.path, public_id: req.file.filename };
   }
 
-  // Merge other allowed fields
-  const allowed = ['title', 'author', 'description', 'coverImage'];
-  for (const k of allowed) if (value[k] !== undefined) ebook[k] = value[k];
-  await ebook.save();
-  res.json(ebook);
+  // Handle Price Object updates
+  if (value.price !== undefined) {
+    if (typeof value.price === 'number') {
+      ebook.price.amount = value.price;
+    } else {
+      ebook.price.amount = value.price.amount ?? ebook.price.amount;
+      ebook.price.currency = value.price.currency ?? ebook.price.currency;
+    }
+  }
+  if (value.currency) ebook.price.currency = value.currency;
+
+  // Update other basic fields
+  ['title', 'author', 'description'].forEach(field => {
+    if (value[field] !== undefined) ebook[field] = value[field];
+  });
+
+  const updatedEbook = await ebook.save();
+  res.json(updatedEbook);
 });
 
+/**
+ * @desc    Get all ebooks
+ * @route   GET /api/ebooks
+ */
+const getEbooks = asyncHandler(async (req, res) => {
+  const ebooks = await Ebook.find({}).select('-__v').sort({ createdAt: -1 });
+  res.json(ebooks);
+});
+
+/**
+ * @desc    Delete ebook
+ * @route   DELETE /api/ebooks/:id
+ */
 const deleteEbook = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const ebook = await Ebook.findById(id);
@@ -168,33 +159,36 @@ const deleteEbook = asyncHandler(async (req, res) => {
   }
 
   try {
-    await cloudinary.uploader.destroy(ebook.coverImage.public_id);
+    if (ebook.coverImage?.public_id) {
+      await cloudinary.uploader.destroy(ebook.coverImage.public_id);
+    }
   } catch (e) {
-    console.warn('Cloudinary destroy failed:', e.message);
+    console.warn('Cloudinary delete failed:', e.message);
   }
 
   await ebook.deleteOne();
   res.json({ message: 'Ebook deleted' });
 });
 
+/**
+ * @desc    Like an ebook
+ * @route   POST /api/ebooks/:id/like
+ */
 const likeEbook = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const cid = req.body.cid || req.headers['x-cid'];
 
-  // Accept cid from body, header, cookie or query
-  const cid = (req.body && req.body.cid) || req.headers['x-cid'] || (req.cookies && req.cookies.cid) || req.query.cid;
   if (!cid) {
     res.status(400);
-    throw new Error('Missing client id (cid). Include a client id in the request body, `x-cid` header or as a cookie.');
+    throw new Error('Missing client identifier');
   }
 
-  // Atomically add cid to likedBy only if not already present and increment likes
   const updated = await Ebook.findOneAndUpdate(
     { _id: id, likedBy: { $ne: cid } },
     { $inc: { likes: 1 }, $push: { likedBy: cid } },
     { new: true }
   );
 
-  // If `updated` is null, either ebook not found or cid already exists
   if (!updated) {
     const ebook = await Ebook.findById(id);
     if (!ebook) {
@@ -213,49 +207,8 @@ const getTopEbooks = asyncHandler(async (req, res) => {
   res.json(ebooks);
 });
 
-const getEbookById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  console.log('getEbookById: incoming request', { url: req.originalUrl, id, type: typeof id });
-
-  // Try a normal findById first
-  let ebook = await Ebook.findById(id).select('-__v');
-
-  // If not found, try a few permissive fallbacks and log what we tried.
-  if (!ebook) {
-    console.warn('getEbookById: findById returned null, attempting fallbacks for id=', id);
-    try {
-      ebook = await Ebook.findOne({ _id: id }).select('-__v');
-      if (ebook) console.log('getEbookById: found via findOne({_id: id})');
-    } catch (e) {
-      console.warn('getEbookById: findOne({_id: id}) threw', e.message);
-    }
-  }
-
-  if (!ebook) {
-    try {
-      const mongoose = require('mongoose');
-      if (mongoose.isValidObjectId(id)) {
-        ebook = await Ebook.findById(mongoose.Types.ObjectId(id)).select('-__v');
-        if (ebook) console.log('getEbookById: found via ObjectId cast');
-      } else {
-        console.warn('getEbookById: id is not a valid ObjectId:', id);
-      }
-    } catch (e) {
-      console.warn('getEbookById: ObjectId fallback threw', e.message);
-    }
-  }
-
-  if (!ebook) {
-    res.status(404);
-    throw new Error('Ebook not found');
-  }
-
-  res.json(ebook);
-});
-
 const getEbookStats = asyncHandler(async (req, res) => {
   const total = await Ebook.countDocuments();
-  // optionally, include other aggregates in future
   res.json({ totalBooks: total });
 });
 

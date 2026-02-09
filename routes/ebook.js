@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { createEbook, getEbooks, updateEbook, deleteEbook, likeEbook, getTopEbooks, getEbookStats } = require('../controllers/ebookController');
+const { createEbook, getEbooks, getEbookById, updateEbook, deleteEbook, likeEbook, getTopEbooks, getEbookStats } = require('../controllers/ebookController');
 const { protect, admin } = require('../middleware/auth');
 const { uploadCoverImage } = require('../middleware/upload');
 
@@ -10,6 +10,8 @@ router.get('/', getEbooks);
 router.get('/top', getTopEbooks);
 // Public endpoint to fetch basic ebook stats (total count)
 router.get('/stats', getEbookStats);
+// Public endpoint to fetch a single ebook by id
+router.get('/:id', getEbookById);
 
 router.post('/', protect, admin, uploadCoverImage, createEbook);
 
